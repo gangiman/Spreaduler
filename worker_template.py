@@ -25,16 +25,18 @@ class YourParamsSheet(ParamsSheet):
                                 "yourworker%40yourproject.iam.gserviceaccount.com"
     }
 
-    def __init__(self, parser):
+    def __init__(self, parser, server_name):
         writable_metrics_and_types = {
              'your model precision': float
         }
         super(YourParamsSheet, self).__init__(
             parser,
             writable_column_types=writable_metrics_and_types,
-            experiment_id_column='exp_hash')
+            experiment_id_column='exp_hash',
+            server_name=server_name)
 
 
 if __name__ == '__main__':
-    params = YourParamsSheet(get_parser())
+    server_name = os.environ.get('SERVERNAME', None)
+    params = YourParamsSheet(get_parser(), server_name)
     params.exec_loop(train)
