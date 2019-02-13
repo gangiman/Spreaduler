@@ -1,3 +1,5 @@
+from typing import Any
+
 import gspread
 import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
@@ -6,34 +8,38 @@ from datetime import datetime
 from time import sleep
 import traceback
 
-
-class Dummy(object):
-    def __init__(self):
-        pass
-
-    def log_server(self, *args, **kwargs):
-        pass
-
-    def log_time_to_column(self, *args, **kwargs):
-        pass
-
-    def log_progress(self, *args, **kwargs):
-        pass
-
-    def log_status(self, *args, **kwargs):
-        pass
-
-    def log_comment(self, *args, **kwargs):
-        pass
-
-    def log_metric(self, *args, **kwargs):
-        pass
-
-    def log_experiment_id(self, *args, **kwargs):
-        pass
+_current_experiment = None
 
 
-global_params = {'params': Dummy()}
+def log_status(status: str):
+    """
+    Sets status of the current experiment
+    :param status:
+    """
+    pass
+
+
+def log_comment(text: str):
+    """
+    Sets comment of the current experiment
+    """
+    pass
+
+
+def log_progress(current: int, max_value: int):
+    """
+    Sets progress of the current experiment
+    """
+    pass
+
+
+def log_metric(metric: str, value: Any):
+    """
+    Logs metric of the current experiment
+    :param metric: metric name
+    :param value: metric value
+    """
+    pass
 
 
 class ParamsException(Exception):
@@ -117,12 +123,13 @@ class ParamsSheet(object):
         :param train_loop: train function that takes args namespace
         :return: None
         """
+        global _current_experiment
         print("Starting worker...")
         timeout_power = 1
         while True:
             try:
                 exp_params = self.get_params_for_training()
-                global_params['params'] = exp_params
+                _current_experiment = exp_params
                 timeout_power = 4
                 exp_params.log_status('running')
                 exp_params.log_server()
@@ -136,12 +143,12 @@ class ParamsSheet(object):
                     timeout_power += 1
             except KeyboardInterrupt:
                 exp_params.log_status('stopped')
-                exp_params = Dummy()
+                _current_experiment = None
             except Exception as e:
                 tb = traceback.format_exc()
                 exp_params.log_comment(tb)
                 exp_params.log_status('error')
-                exp_params = Dummy()
+                _current_experiment = None
 
 
 class ExperimentParams(object):
