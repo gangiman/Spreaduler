@@ -1,3 +1,4 @@
+import os
 from typing import Any, Optional
 
 import gspread
@@ -84,14 +85,20 @@ class ParamsSheet(object):
         self.update_type_from_parser()
         self.defaults = self.get_defaults_from_parser()
         if server_name is None:
-            self.server = socket.gethostname()
+            self.server = os.environ.get('SERVERNAME', None)
+            if self.server is None:
+                self.server = socket.gethostname()
         else:
             self.server = server_name + "_" + socket.gethostname()
         self._generate_credentials()
 
     def _generate_credentials(self):
-        credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
-            self.client_credentials, ['https://spreadsheets.google.com/feeds'])
+        if isinstance(self.client_credentials, dict):
+            credentials = ServiceAccountCredentials._from_parsed_json_keyfile(self.client_credentials,
+                                                                              ['https://spreadsheets.google.com/feeds'])
+        else:
+            credentials = ServiceAccountCredentials.from_json_keyfile_name(self.client_credentials,
+                                                                              ['https://spreadsheets.google.com/feeds'])
         gc = gspread.authorize(credentials)
         self.sheet = gc.open_by_key(self.params_sheet_id).sheet1
         first_cell = self.sheet.cell(1, 1).value

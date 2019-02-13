@@ -12,7 +12,7 @@ Computational Experiment Scheduling System (for Machine Learning) using Google S
  
 ## Features
 
- * You can run as many workers in parallel as you like (the only limit is Google API, 500 requests/minute)
+ * You can run as many workers in parallel as you like (the only limit is Google API, [500 requests / 100 seconds](https://developers.google.com/sheets/api/limits))
  * Anything you can put as argparse optional argument can be a parameter in a spreadsheet.
  * If your program raises an exception status of the experiment will be changed to 'error' and traceback will be copied to 'comment' column.
  * You can specify environment variable "SERVERNAME" to override servers hostname.
