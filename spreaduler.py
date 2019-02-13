@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import gspread
 import pandas as pd
@@ -8,7 +8,22 @@ from datetime import datetime
 from time import sleep
 import traceback
 
-_current_experiment = None
+_current_experiment = None  # type: Optional[ExperimentParams]
+
+
+def _check_experiment():
+    if _current_experiment is None:
+        raise Exception("No experiment is running!")
+
+
+def log_experiment_id(experiment_id: str):
+    """
+    Sets experiment id
+    :param experiment_id:
+    :return:
+    """
+    _check_experiment()
+    _current_experiment.log_experiment_id(experiment_id)
 
 
 def log_status(status: str):
@@ -16,21 +31,24 @@ def log_status(status: str):
     Sets status of the current experiment
     :param status:
     """
-    pass
+    _check_experiment()
+    _current_experiment.log_status(status)
 
 
 def log_comment(text: str):
     """
     Sets comment of the current experiment
     """
-    pass
+    _check_experiment()
+    _current_experiment.log_comment(text)
 
 
 def log_progress(current: int, max_value: int):
     """
     Sets progress of the current experiment
     """
-    pass
+    _check_experiment()
+    _current_experiment.log_progress(current, max_value)
 
 
 def log_metric(metric: str, value: Any):
@@ -39,7 +57,8 @@ def log_metric(metric: str, value: Any):
     :param metric: metric name
     :param value: metric value
     """
-    pass
+    _check_experiment()
+    _current_experiment.log_metric(metric, value)
 
 
 class ParamsException(Exception):
@@ -137,8 +156,8 @@ class ParamsSheet(object):
                 train_loop(exp_params.args)
                 exp_params.log_status('finished')
             except ParamsException:
-                print("No params to process, waiting for {} seconds and checking again".format(2**timeout_power))
-                sleep(2**timeout_power)
+                print("No params to process, waiting for {} seconds and checking again".format(2 ** timeout_power))
+                sleep(2 ** timeout_power)
                 if timeout_power <= 10:
                     timeout_power += 1
             except KeyboardInterrupt:
