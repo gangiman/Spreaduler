@@ -1,3 +1,6 @@
+import os
+from typing import Any, Optional
+
 import gspread
 import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
@@ -6,34 +9,57 @@ from datetime import datetime
 from time import sleep
 import traceback
 
-
-class Dummy(object):
-    def __init__(self):
-        pass
-
-    def log_server(self, *args, **kwargs):
-        pass
-
-    def log_time_to_column(self, *args, **kwargs):
-        pass
-
-    def log_progress(self, *args, **kwargs):
-        pass
-
-    def log_status(self, *args, **kwargs):
-        pass
-
-    def log_comment(self, *args, **kwargs):
-        pass
-
-    def log_metric(self, *args, **kwargs):
-        pass
-
-    def log_experiment_id(self, *args, **kwargs):
-        pass
+_current_experiment = None  # type: Optional[ExperimentParams]
 
 
-global_params = {'params': Dummy()}
+def _check_experiment():
+    if _current_experiment is None:
+        raise Exception("No experiment is running!")
+
+
+def log_experiment_id(experiment_id: str):
+    """
+    Sets experiment id
+    :param experiment_id:
+    :return:
+    """
+    _check_experiment()
+    _current_experiment.log_experiment_id(experiment_id)
+
+
+def log_status(status: str):
+    """
+    Sets status of the current experiment
+    :param status:
+    """
+    _check_experiment()
+    _current_experiment.log_status(status)
+
+
+def log_comment(text: str):
+    """
+    Sets comment of the current experiment
+    """
+    _check_experiment()
+    _current_experiment.log_comment(text)
+
+
+def log_progress(current: int, max_value: int):
+    """
+    Sets progress of the current experiment
+    """
+    _check_experiment()
+    _current_experiment.log_progress(current, max_value)
+
+
+def log_metric(metric: str, value: Any):
+    """
+    Logs metric of the current experiment
+    :param metric: metric name
+    :param value: metric value
+    """
+    _check_experiment()
+    _current_experiment.log_metric(metric, value)
 
 
 class ParamsException(Exception):
@@ -59,14 +85,20 @@ class ParamsSheet(object):
         self.update_type_from_parser()
         self.defaults = self.get_defaults_from_parser()
         if server_name is None:
-            self.server = socket.gethostname()
+            self.server = os.environ.get('SERVERNAME', None)
+            if self.server is None:
+                self.server = socket.gethostname()
         else:
             self.server = server_name + "_" + socket.gethostname()
         self._generate_credentials()
 
     def _generate_credentials(self):
-        credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
-            self.client_credentials, ['https://spreadsheets.google.com/feeds'])
+        if isinstance(self.client_credentials, dict):
+            credentials = ServiceAccountCredentials._from_parsed_json_keyfile(self.client_credentials,
+                                                                              ['https://spreadsheets.google.com/feeds'])
+        else:
+            credentials = ServiceAccountCredentials.from_json_keyfile_name(self.client_credentials,
+                                                                              ['https://spreadsheets.google.com/feeds'])
         gc = gspread.authorize(credentials)
         self.sheet = gc.open_by_key(self.params_sheet_id).sheet1
         first_cell = self.sheet.cell(1, 1).value
@@ -117,12 +149,13 @@ class ParamsSheet(object):
         :param train_loop: train function that takes args namespace
         :return: None
         """
+        global _current_experiment
         print("Starting worker...")
         timeout_power = 1
         while True:
             try:
                 exp_params = self.get_params_for_training()
-                global_params['params'] = exp_params
+                _current_experiment = exp_params
                 timeout_power = 4
                 exp_params.log_status('running')
                 exp_params.log_server()
@@ -130,18 +163,18 @@ class ParamsSheet(object):
                 train_loop(exp_params.args)
                 exp_params.log_status('finished')
             except ParamsException:
-                print("No params to process, waiting for {} seconds and checking again".format(2**timeout_power))
-                sleep(2**timeout_power)
+                print("No params to process, waiting for {} seconds and checking again".format(2 ** timeout_power))
+                sleep(2 ** timeout_power)
                 if timeout_power <= 10:
                     timeout_power += 1
             except KeyboardInterrupt:
                 exp_params.log_status('stopped')
-                exp_params = Dummy()
+                _current_experiment = None
             except Exception as e:
                 tb = traceback.format_exc()
                 exp_params.log_comment(tb)
                 exp_params.log_status('error')
-                exp_params = Dummy()
+                _current_experiment = None
 
 
 class ExperimentParams(object):
