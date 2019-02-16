@@ -12,9 +12,8 @@ import traceback
 _current_experiment = None  # type: Optional[ExperimentParams]
 
 
-def _check_experiment():
-    if _current_experiment is None:
-        raise Exception("No experiment is running!")
+def _experiment_running():
+    return _current_experiment is not None
 
 
 def log_experiment_id(experiment_id: str):
@@ -23,8 +22,8 @@ def log_experiment_id(experiment_id: str):
     :param experiment_id:
     :return:
     """
-    _check_experiment()
-    _current_experiment.log_experiment_id(experiment_id)
+    if _experiment_running():
+        _current_experiment.log_experiment_id(experiment_id)
 
 
 def log_status(status: str):
@@ -32,24 +31,24 @@ def log_status(status: str):
     Sets status of the current experiment
     :param status:
     """
-    _check_experiment()
-    _current_experiment.log_status(status)
+    if _experiment_running():
+        _current_experiment.log_status(status)
 
 
 def log_comment(text: str):
     """
     Sets comment of the current experiment
     """
-    _check_experiment()
-    _current_experiment.log_comment(text)
+    if _experiment_running():
+        _current_experiment.log_comment(text)
 
 
 def log_progress(current: int, max_value: int):
     """
     Sets progress of the current experiment
     """
-    _check_experiment()
-    _current_experiment.log_progress(current, max_value)
+    if _experiment_running():
+        _current_experiment.log_progress(current, max_value)
 
 
 def log_metric(metric: str, value: Any):
@@ -58,8 +57,8 @@ def log_metric(metric: str, value: Any):
     :param metric: metric name
     :param value: metric value
     """
-    _check_experiment()
-    _current_experiment.log_metric(metric, value)
+    if _experiment_running():
+        _current_experiment.log_metric(metric, value)
 
 
 class ParamsException(Exception):
@@ -98,7 +97,7 @@ class ParamsSheet(object):
                                                                               ['https://spreadsheets.google.com/feeds'])
         else:
             credentials = ServiceAccountCredentials.from_json_keyfile_name(self.client_credentials,
-                                                                              ['https://spreadsheets.google.com/feeds'])
+                                                                           ['https://spreadsheets.google.com/feeds'])
         gc = gspread.authorize(credentials)
         self.sheet = gc.open_by_key(self.params_sheet_id).sheet1
         first_cell = self.sheet.cell(1, 1).value
