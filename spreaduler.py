@@ -144,7 +144,6 @@ class ParamsSheet(object):
 
     def exec_loop(self, train_loop):
         """
-
         :param train_loop: train function that takes args namespace
         :return: None
         """
@@ -184,6 +183,7 @@ class ExperimentParams(object):
         self._params_row_id = row_id + 1 + _params_sheet.column_row_id
         self._read_only_columns = set(_params_sheet.columns) - set(self._writable_columns)
         default_args = _params_sheet.parser.parse_args()
+        self.args = default_args
         for _idx, _wc_name in enumerate(_params_sheet.columns):
             if _wc_name in self._read_only_columns:
                 if isinstance(params[_wc_name], str) and not params[_wc_name]:
@@ -191,11 +191,15 @@ class ExperimentParams(object):
                         self._params_sheet.update_cell(
                             self._params_row_id, _idx + 1, getattr(default_args, _wc_name, ''))
                 else:
-                    dtype = _params_sheet.column_types[_wc_name]
-                    if dtype is None:  # type for bool is None
-                        dtype = lambda x: x.lower() == 'true'
-                    setattr(default_args, _wc_name, dtype(params[_wc_name]))
-        self.args = default_args
+                    if _wc_name not in _params_sheet.column_types:
+                        print("Unexpected column %s (known column: %s); casting it to str" %
+                              (_wc_name, ",".join(_params_sheet.column_types.keys())))
+                        setattr(self.args, _wc_name, str(params[_wc_name]))
+                    else:
+                        dtype = _params_sheet.column_types[_wc_name]
+                        if dtype is None:  # type for bool is None
+                            dtype = lambda x: x.lower() == 'true'
+                        setattr(self.args, _wc_name, dtype(params[_wc_name]))
 
     def log_server(self):
         self._write_to_field('server', self._params_sheet.server)
