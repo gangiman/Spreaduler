@@ -25,10 +25,10 @@ def get_parser():
     return parser
 
 
-def train(args: argparse.ArgumentParser):
-    for i in range(10):
-        log_progress(i, 10)
-        time.sleep(1.0)
+def train(args: argparse.Namespace):
+    for i in range(5):
+        log_progress(i + 1, 5)
+        time.sleep(0.2)
     log_metric("accuracy", args.some_param / 10)
 
 
