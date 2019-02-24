@@ -67,8 +67,8 @@ class ParamsException(Exception):
 
 class ParamsSheet(object):
     def __init__(self, parser, client_credentials: str, params_sheet_id = None,
-                 writable_column_types: Dict[str, Any]=None, experiment_id_column: str='experiment_id', server_name: str=None,
-                 ignore_columns: List[str] = None):
+                 writable_column_types: Dict[str, Any]=None, experiment_id_column: str='experiment_id',
+                 server_name: str=None, fill_empty_with_defaults=True):
         """
         ParamsSheet object represents state of google spreadsheet with parameters and all methods to access it.
         :param parser: Argparse parser object with no positional arguments
@@ -79,7 +79,7 @@ class ParamsSheet(object):
         self.client_credentials = client_credentials
         self.params_sheet_id = params_sheet_id
         self.experiment_id_column = experiment_id_column
-        self.ignore_columns = ignore_columns
+        self.fill_empty_with_defaults = fill_empty_with_defaults
         self.parser = parser
         self.defaults = {
             _action.dest: _action.default
@@ -191,41 +191,40 @@ class ParamsSheet(object):
         return ExperimentParams(
             params_to_process.index[0] + 1 + self.column_row_id,
             dict(params_to_process.iloc[0]),
-            self)
+            self, self.fill_empty_with_defaults)
 
 
 class ExperimentParams(object):
     _system_columns = ('time_started', 'last_update', 'progress_bar', 'server', 'status', 'comment')
 
-    def __init__(self, row_id, params, _params_sheet: ParamsSheet, fill_empty_with_defaults=True):
+    def __init__(self, row_id, params, _params_sheet: ParamsSheet, fill_empty_with_defaults: bool):
         self._params_sheet = _params_sheet
         self._params_row_id = row_id
+        self.args = _params_sheet.parser.parse_args()
         parameter_columns = set(_params_sheet.columns) - set(self._system_columns) - {_params_sheet.experiment_id_column}
-        default_args = _params_sheet.parser.parse_args()
-        self.args = default_args
-        for _idx, _wc_name in enumerate(parameter_columns):
+        for _column_name in parameter_columns:
             # Skipping metric columns
-            if _params_sheet.metric_column_types is not None and _wc_name in _params_sheet.metric_column_types:
+            if _params_sheet.metric_column_types is not None and _column_name in _params_sheet.metric_column_types:
                 continue
 
-            parameter_value = params[_wc_name]
-            if isinstance(params[_wc_name], str) and (params[_wc_name] == ""):
+            parameter_value = params[_column_name]
+            if isinstance(params[_column_name], str) and (params[_column_name] == ""):
                 # This parameter field is empty
                 if fill_empty_with_defaults:
-                    parameter_value = getattr(default_args, _wc_name, '')
+                    parameter_value = getattr(self.args, _column_name, '')
                     self._params_sheet.update_cell(
-                        self._params_row_id, _wc_name,
+                        self._params_row_id, _column_name,
                         parameter_value
                     )
 
-            if _wc_name not in _params_sheet.column_types:
-                print("Unexpected column %s (known column: %s)" % (_wc_name, ",".join(_params_sheet.column_types)))
+            if _column_name not in _params_sheet.column_types:
+                print("Unexpected column %s (known column: %s)" % (_column_name, ",".join(_params_sheet.column_types)))
                 continue
 
-            dtype = _params_sheet.column_types[_wc_name]
+            dtype = _params_sheet.column_types[_column_name]
             if dtype is None:  # type for bool is None
                 dtype = lambda x: x.lower() == 'true'
-            setattr(self.args, _wc_name, dtype(parameter_value))
+            setattr(self.args, _column_name, dtype(parameter_value))
 
     def log_server(self):
         self._write_to_field('server', self._params_sheet.server)

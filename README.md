@@ -5,7 +5,7 @@ Computational Experiment Scheduling System (for Machine Learning) using Google S
  1. Using [this](https://gspread.readthedocs.io/en/latest/oauth2.html) tutorial create API credentials.
  2. Create google spreadsheet with columns that correspond to arguments in your argparse parser
  3. Add special columns: 'time_started', 'last_update', 'progress_bar', 'server', 'status', 'comment'
- 4. Add columns with performance characteristics of your script (e.g. 'test accuracy')
+ 4. Add columns with performance characteristics of your script (e.g. 'test_accuracy')
  5. Write your worker script by Inheriting from `ParamsSheet` class, add credentials created on step 1 and give id of google spreadsheet that you created in step 2.
  6. Make sure your 'train' function takes parsed arguments as input (output of `parse_args` method)
  7. Add experiment parameters to a spreadsheet and watch worker do its thing.
