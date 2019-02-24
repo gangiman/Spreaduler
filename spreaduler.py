@@ -66,10 +66,8 @@ class ParamsException(Exception):
 
 
 class ParamsSheet(object):
-    client_credentials = None
-    params_sheet_id = None
-
-    def __init__(self, parser, writable_column_types: Dict[str, Any]=None, experiment_id_column: str='experiment_id', server_name: str=None,
+    def __init__(self, parser, client_credentials: str, params_sheet_id = None,
+                 writable_column_types: Dict[str, Any]=None, experiment_id_column: str='experiment_id', server_name: str=None,
                  ignore_columns: List[str] = None):
         """
         ParamsSheet object represents state of google spreadsheet with parameters and all methods to access it.
@@ -78,6 +76,8 @@ class ParamsSheet(object):
         If it is None, writing unknown metrics won't generate warnings.
         :param experiment_id_column: str name of experiment id column.
         """
+        self.client_credentials = client_credentials
+        self.params_sheet_id = params_sheet_id
         self.experiment_id_column = experiment_id_column
         self.ignore_columns = ignore_columns
         self.parser = parser

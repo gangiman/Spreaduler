@@ -1,22 +1,6 @@
-import os
-
-from spreaduler import ParamsSheet, log_metric, log_progress
+from spreaduler import log_metric, log_progress, ParamsSheet
 import argparse
 import time
-
-
-class YourParamsSheet(ParamsSheet):
-    params_sheet_id = '1xZHwmWTDWD3KBf9MpynCFYPTcsuJUEruhVDlQYTvbdo'
-    client_credentials = "Sample project-eb8164034438.json"
-
-    def __init__(self, parser):
-        writable_metrics_and_types = {
-            'accuracy': float
-        }
-        super(YourParamsSheet, self).__init__(
-            parser,
-            writable_column_types=writable_metrics_and_types,
-            experiment_id_column='experiment_id')
 
 
 def get_parser():
@@ -33,5 +17,9 @@ def train(args: argparse.Namespace):
 
 
 if __name__ == '__main__':
-    params = YourParamsSheet(get_parser())
+    params = ParamsSheet(
+        get_parser(),
+        "Sample project-eb8164034438.json",
+        '1xZHwmWTDWD3KBf9MpynCFYPTcsuJUEruhVDlQYTvbdo'
+    )
     params.exec_loop(train)
