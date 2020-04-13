@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional, List, Dict
+from typing import Any, Optional, Dict
 
 import gspread
 import pandas as pd
@@ -65,10 +65,10 @@ class ParamsException(Exception):
     pass
 
 
-class ParamsSheet(object):
-    def __init__(self, parser, client_credentials: str, params_sheet_id = None,
-                 writable_column_types: Dict[str, Any]=None, experiment_id_column: str='experiment_id',
-                 server_name: str=None, fill_empty_with_defaults=True):
+class ParamsSheet:
+    def __init__(self, parser, client_credentials: str, params_sheet_id, server_name: str = None,
+                 writable_column_types: Dict[str, Any] = None, experiment_id_column: str = 'experiment_id',
+                 fill_empty_with_defaults=True, from_existing_worksheet: Optional[gspread.Worksheet] = None):
         """
         ParamsSheet object represents state of google spreadsheet with parameters and all methods to access it.
         :param parser: Argparse parser object with no positional arguments
@@ -76,29 +76,20 @@ class ParamsSheet(object):
         If it is None, writing unknown metrics won't generate warnings.
         :param experiment_id_column: str name of experiment id column.
         """
+        self.spreadsheet_cache = None
         self.client_credentials = client_credentials
         self.params_sheet_id = params_sheet_id
         self.experiment_id_column = experiment_id_column
         self.fill_empty_with_defaults = fill_empty_with_defaults
-        self.parser = parser
-        self.defaults = {
-            _action.dest: _action.default
-            for _action in self.parser._actions[1:]
-        }
-
-        # Setting up dictionaries holding column types
         self.metric_column_types = writable_column_types
-        if self.metric_column_types is None:
-            self.column_types = {}
-        else:
-            assert isinstance(self.metric_column_types, dict), "writable_column_types has to be a dict"
-            self.column_types = writable_column_types.copy()
-        self.column_types.update({
-            _action.dest: _action.type
-            for _action in self.parser._actions[1:]
-        })
+        self.column_types = {}
+        self.parser = parser
 
-        # Getting server name
+        self._init_column_types()
+        self._setting_server_name(server_name)
+        self._generate_credentials(sheet=from_existing_worksheet)
+
+    def _setting_server_name(self, server_name):
         if server_name is None:
             self.server = os.environ.get('SERVERNAME', None)
             if self.server is None:
@@ -106,8 +97,15 @@ class ParamsSheet(object):
         else:
             self.server = server_name + "_" + socket.gethostname()
 
-        # Getting credentials
-        self._generate_credentials()
+    def _init_column_types(self):
+        # Setting up dictionaries holding column types
+        if self.metric_column_types is not None:
+            assert isinstance(self.metric_column_types, dict), "writable_column_types has to be a dict"
+            self.column_types = self.metric_column_types.copy()
+        self.column_types.update({
+            _action.dest: _action.type
+            for _action in self.parser._actions[1:]
+        })
 
     def update_cell(self, row, column_name, value):
         col = self.columns.index(column_name) + 1
@@ -117,9 +115,10 @@ class ParamsSheet(object):
             self._generate_credentials()
             self.sheet.update_cell(row, col, value)
 
-    def exec_loop(self, train_loop):
+    def exec_loop(self, train_loop, exit_when_no_params=False):
         """
         :param train_loop: train function that takes args namespace
+        :param exit_when_no_params: - if True, will exit loop when no more params to process
         :return: None
         """
         global _current_experiment
@@ -137,6 +136,8 @@ class ParamsSheet(object):
                 train_loop(exp_params.args)
                 exp_params.log_status('finished')
             except ParamsException:
+                if exit_when_no_params:
+                    break
                 print("No params to process, waiting for {} seconds and checking again".format(2 ** timeout_power))
                 sleep(2 ** timeout_power)
                 if timeout_power <= 10:
@@ -153,17 +154,20 @@ class ParamsSheet(object):
                     exp_params.log_status('error')
                 _current_experiment = None
 
-    def _generate_credentials(self):
-        if isinstance(self.client_credentials, dict):
-            credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
-                self.client_credentials, ['https://spreadsheets.google.com/feeds']
-            )
+    def _generate_credentials(self, sheet=None):
+        if sheet is None:
+            if isinstance(self.client_credentials, dict):
+                credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
+                    self.client_credentials, ['https://spreadsheets.google.com/feeds']
+                )
+            else:
+                credentials = ServiceAccountCredentials.from_json_keyfile_name(
+                    self.client_credentials, ['https://spreadsheets.google.com/feeds']
+                )
+            gc = gspread.authorize(credentials)
+            self.sheet = gc.open_by_key(self.params_sheet_id).sheet1
         else:
-            credentials = ServiceAccountCredentials.from_json_keyfile_name(
-                self.client_credentials,['https://spreadsheets.google.com/feeds']
-            )
-        gc = gspread.authorize(credentials)
-        self.sheet = gc.open_by_key(self.params_sheet_id).sheet1
+            self.sheet = sheet
         first_cell = self.sheet.cell(1, 1).value
         try:
             self.column_row_id = int(first_cell)
@@ -171,19 +175,23 @@ class ParamsSheet(object):
             self.column_row_id = 1
         self.columns = self.sheet.row_values(self.column_row_id)
 
+    def get_full_spreadsheet(self) -> pd.DataFrame:
+        try:
+            self.spreadsheet_cache = pd.DataFrame(self.sheet.get_all_records(head=self.column_row_id, default_blank=""))
+        except gspread.exceptions.APIError:
+            self._generate_credentials()
+            self.spreadsheet_cache = pd.DataFrame(self.sheet.get_all_records(head=self.column_row_id, default_blank=""))
+        return self.spreadsheet_cache.copy()
+
     def _get_params_for_training(self) -> "ExperimentParams":
         """
         This function gets next experiment parameter settings
         """
-        try:
-            all_spreadsheet = pd.DataFrame(self.sheet.get_all_records(head=self.column_row_id, default_blank=""))
-        except gspread.exceptions.APIError:
-            self._generate_credentials()
-            all_spreadsheet = pd.DataFrame(self.sheet.get_all_records(head=self.column_row_id, default_blank=""))
-        params_to_process = all_spreadsheet[
-            (all_spreadsheet.status == "") & (all_spreadsheet.server == "")]
-        params_for_this_server = all_spreadsheet[
-            (all_spreadsheet.status == "") & (all_spreadsheet.server == self.server)]
+        full_spreadsheet = self.get_full_spreadsheet()
+        params_to_process = full_spreadsheet[
+            (full_spreadsheet.status == "") & (full_spreadsheet.server == "")]
+        params_for_this_server = full_spreadsheet[
+            (full_spreadsheet.status == "") & (full_spreadsheet.server == self.server)]
         if len(params_for_this_server):
             params_to_process = params_for_this_server
         if len(params_to_process) == 0:
@@ -194,14 +202,14 @@ class ParamsSheet(object):
             self, self.fill_empty_with_defaults)
 
 
-class ExperimentParams(object):
-    _system_columns = ('time_started', 'last_update', 'progress_bar', 'server', 'status', 'comment')
+class ExperimentParams:
+    _system_columns = {'time_started', 'last_update', 'progress_bar', 'server', 'status', 'comment'}
 
     def __init__(self, row_id, params, _params_sheet: ParamsSheet, fill_empty_with_defaults: bool):
         self._params_sheet = _params_sheet
         self._params_row_id = row_id
-        self.args = _params_sheet.parser.parse_args()
-        parameter_columns = set(_params_sheet.columns) - set(self._system_columns) - {_params_sheet.experiment_id_column}
+        self.args = _params_sheet.parser.parse_args([])
+        parameter_columns = set(_params_sheet.columns) - self._system_columns - {_params_sheet.experiment_id_column}
         for _column_name in parameter_columns:
             # Skipping metric columns
             if _params_sheet.metric_column_types is not None and _column_name in _params_sheet.metric_column_types:
