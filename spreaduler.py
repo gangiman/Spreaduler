@@ -1,13 +1,13 @@
 import os
+import socket
+import traceback
+from time import sleep
+from datetime import datetime
 from typing import Any, Optional, Dict
 
 import gspread
 import pandas as pd
 from oauth2client.service_account import ServiceAccountCredentials
-import socket
-from datetime import datetime
-from time import sleep
-import traceback
 
 _current_experiment = None  # type: Optional[ExperimentParams]
 
@@ -231,8 +231,12 @@ class ExperimentParams:
 
             dtype = _params_sheet.column_types[_column_name]
             if dtype is None:  # type for bool is None
-                dtype = lambda x: x.lower() == 'true'
+                dtype = self.str2bool
             setattr(self.args, _column_name, dtype(parameter_value))
+
+    @staticmethod
+    def str2bool(x):
+        return x.lower() == 'true'
 
     def log_server(self):
         self._write_to_field('server', self._params_sheet.server)
