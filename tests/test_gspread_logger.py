@@ -1,134 +1,58 @@
-import pickle
-from argparse import Namespace
-
-import torch
+import os
 import pytest
-from pytorch_lightning import Trainer
+from time import sleep
+from argparse import Namespace
+from gspread_logger import GSpreadLogger
 
-from gspread_logger import PyDriveLogger
-from tests.model_and_data_for_test import get_default_hparams
-from tests.model_and_data_for_test import TestModelBase as LightningTestModel
-from pydrive.auth import GoogleAuth
-from pydrive.drive import GoogleDrive
+from tests import TEST_ROOT
+PATH_DATASETS = os.path.join(TEST_ROOT, 'Datasets')
+EXPERIMENT_NAME = 'TestGDriveLogger'
+PYDRIVE_SETTINGS_FILE = 'creds/pydrive_settings.yaml'
 
-#
-# def test_pydrive():
-#     gauth = GoogleAuth(settings_file='creds/pydrive_settings.yaml')
-#     gauth.LocalWebserverAuth()  # Creates local webserver and auto handles authentication.
-#     drive = GoogleDrive(gauth)
-#
-#     # file1 = drive.CreateFile({'title': 'Hello.txt'})  # Create GoogleDriveFile instance with title 'Hello.txt'.
-#     # file1.SetContentString('Hello World!') # Set content of the file from given string.
-#     # file1.Upload()
-#
-#     file_list = drive.ListFile({'q': "'root' in parents and trashed=false"}).GetList()
-#     for file1 in file_list:
-#         print('title: %s, id: %s' % (file1['title'], file1['id']))
-#
 
-def test_gspread_logger():
-    """Verify that basic functionality of gspread logger works."""
+@pytest.fixture(scope="session")
+def logger():
+    return GSpreadLogger(name=EXPERIMENT_NAME, version=0,
+                         settings_file=PYDRIVE_SETTINGS_FILE,
+                         gspread_credentials='creds/gsheets_credentials.json')
 
-    hparams = get_default_hparams()
-    model = LightningTestModel(hparams)
 
-    logger = PyDriveLogger(name='TestGDriveLogger',
-                           settings_file='creds/pydrive_settings.yaml',
-                           gspread_credentials='creds/gsheets_credentials.json')
+@pytest.fixture
+def remove_experiment_dir_from_gdrive(logger):
+    file_list = logger.drive.ListFile(
+        {'q': f"'root' in parents and trashed=false and title='{EXPERIMENT_NAME}'"}).GetList()
+    for _file in file_list:
+        if _file['mimeType'] == 'application/vnd.google-apps.folder':
+            _file.Trash()
+            break
 
-    trainer_options = dict(max_epochs=1, train_percent_check=0.01, logger=logger, default_save_path='/tmp/')
 
-    trainer = Trainer(**trainer_options)
-    result = trainer.fit(model)
+def test_gspread_logger(logger):
+    hparams = Namespace(**{
+        'drop_prob': 0.2,
+        'batch_size': 32,
+        'in_features': 28 * 28,
+        'learning_rate': 0.001 * 8,
+        'optimizer_name': 'adam',
+        'data_root': PATH_DATASETS,
+        'out_features': 10,
+        'hidden_dim': 1000,
+    })
 
-    print("result finished")
-    assert result == 1, "Training failed"
+    logger.log_hyperparams(hparams)
 
-#
-# def test_gspread_pickle(tmpdir):
-#     """Verify that pickling trainer with gspread logger works."""
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name="gspread_pickle_test")
-#
-#     trainer_options = dict(max_epochs=1, logger=logger)
-#
-#     trainer = Trainer(**trainer_options)
-#     pkl_bytes = pickle.dumps(trainer)
-#     trainer2 = pickle.loads(pkl_bytes)
-#     trainer2.logger.log_metrics({"acc": 1.0})
-#
-#
-# def test_gspread_automatic_versioning(tmpdir):
-#     """Verify that automatic versioning works"""
-#
-#     root_dir = tmpdir.mkdir("tb_versioning")
-#     root_dir.mkdir("version_0")
-#     root_dir.mkdir("version_1")
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name="tb_versioning")
-#
-#     assert logger.version == 2
-#
-#
-# def test_gspread_manual_versioning(tmpdir):
-#     """Verify that manual versioning works"""
-#
-#     root_dir = tmpdir.mkdir("tb_versioning")
-#     root_dir.mkdir("version_0")
-#     root_dir.mkdir("version_1")
-#     root_dir.mkdir("version_2")
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name="tb_versioning", version=1)
-#
-#     assert logger.version == 1
-#
-#
-# def test_gspread_named_version(tmpdir):
-#     """Verify that manual versioning works for string versions, e.g. '2020-02-05-162402' """
-#
-#     tmpdir.mkdir("tb_versioning")
-#     expected_version = "2020-02-05-162402"
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name="tb_versioning", version=expected_version)
-#     logger.log_hyperparams({"a": 1, "b": 2})  # Force data to be written
-#
-#     assert logger.version == expected_version
-#     # Could also test existence of the directory but this fails
-#     # in the "minimum requirements" test setup
-#
-#
-# def test_gspread_no_name(tmpdir):
-#     """Verify that None or empty name works"""
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name="")
-#     assert logger.root_dir == tmpdir
-#
-#     logger = GSpreadLogger(save_dir=tmpdir, name=None)
-#     assert logger.root_dir == tmpdir
-#
-#
-# @pytest.mark.parametrize("step_idx", [10, None])
-# def test_gspread_log_metrics(tmpdir, step_idx):
-#     logger = GSpreadLogger(tmpdir)
-#     metrics = {
-#         "float": 0.3,
-#         "int": 1,
-#         "FloatTensor": torch.tensor(0.1),
-#         "IntTensor": torch.tensor(1)
-#     }
-#     logger.log_metrics(metrics, step_idx)
-#
-#
-# def test_gspread_log_hyperparams(tmpdir):
-#     logger = GSpreadLogger(tmpdir)
-#     hparams = {
-#         "float": 0.3,
-#         "int": 1,
-#         "string": "abc",
-#         "bool": True,
-#         "dict": {'a': {'b': 'c'}},
-#         "list": [1, 2, 3],
-#         "namespace": Namespace(foo=Namespace(bar='buzz')),
-#         "layer": torch.nn.BatchNorm1d
-#     }
-#     logger.log_hyperparams(hparams)
+    for _idx in range(1, 21):
+        logger.log_metrics({'loss': 20.0 / _idx, 'acc': _idx / 20.0}, step=_idx)
+        if _idx % 3 == 0:
+            logger.save()
+            logger.log_metrics({'val_loss': 20.0 / _idx, 'mIoU': _idx / 20.0}, step=_idx)
+        if _idx % 5 == 0:
+            logger.save()
+            logger.log_metrics({'test_mIoU': _idx / 20.0, 'test_AP': _idx / 40.0}, step=_idx)
+        sleep(1)
+    for _idx, _cell in enumerate(logger._ws.range("A4:A23")):
+        assert _cell.value == _idx + 1
+    for _idx, _cell in enumerate(logger._ws.range("E4:E9")):
+        assert _cell.value == (_idx + 1) * 3
+    for _idx, _cell in enumerate(logger._ws.range("I4:I6")):
+        assert _cell.value == (_idx + 1) * 5

@@ -3,7 +3,4 @@ pandas
 oauth2client
 certifi
 pytest
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 pydrive
