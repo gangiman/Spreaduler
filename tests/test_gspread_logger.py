@@ -11,7 +11,7 @@ PYDRIVE_SETTINGS_FILE = 'creds/pydrive_settings.yaml'
 
 
 @pytest.fixture(scope="session")
-def logger():
+def logger() -> GSpreadLogger:
     return GSpreadLogger(name=EXPERIMENT_NAME, version=0,
                          settings_file=PYDRIVE_SETTINGS_FILE,
                          gspread_credentials='creds/gsheets_credentials.json')
@@ -50,9 +50,16 @@ def test_gspread_logger(logger):
             logger.save()
             logger.log_metrics({'test_mIoU': _idx / 20.0, 'test_AP': _idx / 40.0}, step=_idx)
         sleep(1)
-    for _idx, _cell in enumerate(logger._ws.range("A4:A23")):
+    for _idx, _cell in enumerate(logger._metrics_ws.range("A4:A23")):
         assert _cell.value == _idx + 1
-    for _idx, _cell in enumerate(logger._ws.range("E4:E9")):
+    for _idx, _cell in enumerate(logger._metrics_ws.range("E4:E9")):
         assert _cell.value == (_idx + 1) * 3
-    for _idx, _cell in enumerate(logger._ws.range("I4:I6")):
+    for _idx, _cell in enumerate(logger._metrics_ws.range("I4:I6")):
         assert _cell.value == (_idx + 1) * 5
+
+
+def test_image_upload(logger):
+    logger._init_experiment_folder()
+    logger.log_image('test', 'tests/test_image.png', step=13, image_size=(256, 256))
+    logger.save()
+    assert int(logger._images_ws.cell(4, 1).value) == 13

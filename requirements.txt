@@ -4,3 +4,4 @@ oauth2client
 certifi
 pytest
 pydrive
+gspread-formatting
